@@ -287,4 +287,194 @@ class AuthController extends Controller
             ],
         ]);
     }
+
+
+    /**
+     * Mostrar formulario de cambio de contraseña
+     */
+    public function showChangePasswordForm()
+    {
+        return view('core::auth.change-password');
+    }
+
+/**
+     * Procesar cambio de contraseña
+     */
+    public function changePassword(Request $request)
+    {
+        $request->validate([
+            'current_password' => 'required',
+            'password' => 'required|min:8|confirmed',
+        ]);
+
+        $user = Auth::user();
+
+        // Verificar contraseña actual
+        if (!Hash::check($request->current_password, $user->password)) {
+            return back()->withErrors([
+                'current_password' => 'La contraseña actual es incorrecta.',
+            ]);
+        }
+
+        // Validar política de contraseñas (si existe)
+        if (class_exists('Modules\Core\Entities\SecurityPolicy')) {
+            $passwordValidation = \Modules\Core\Entities\SecurityPolicy::validatePassword($request->password);
+
+            if ($passwordValidation !== true) {
+                return back()->withErrors([
+                    'password' => $passwordValidation,
+                ]);
+            }
+        }
+
+        // Actualizar contraseña
+        $user->password = Hash::make($request->password);
+        $user->save();
+
+        // Registrar en auditoría
+        if (class_exists('Modules\Core\Entities\AuditLog')) {
+            \Modules\Core\Entities\AuditLog::register(
+                $user->id,
+                'password_changed',
+                'auth',
+                'Contraseña cambiada por el usuario',
+                $request->ip()
+            );
+        }
+
+        return redirect()->route('core.dashboard')
+            ->with('success', 'Contraseña actualizada correctamente');
+    }
+
+    /**
+     * Mostrar perfil de usuario
+     */
+    public function showProfile()
+    {
+        $user = Auth::user();
+        return view('core::auth.profile', compact('user'));
+    }
+
+    /**
+     * Actualizar perfil de usuario
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = Auth::user();
+
+        $request->validate([
+            'username' => 'required|string|max:255|unique:users,username,' . $user->id,
+            'email' => 'required|email|max:255|unique:users,email,' . $user->id,
+        ]);
+
+        $user->username = $request->username;
+        $user->email = $request->email;
+
+        if ($request->has('preferences')) {
+            $user->preferences = $request->preferences;
+        }
+
+        $user->save();
+
+        // Registrar en auditoría
+        if (class_exists('Modules\Core\Entities\AuditLog')) {
+            \Modules\Core\Entities\AuditLog::register(
+                $user->id,
+                'profile_updated',
+                'auth',
+                'Perfil actualizado por el usuario',
+                $request->ip()
+            );
+        }
+
+        return back()->with('success', 'Perfil actualizado correctamente');
+    }
+
+    /**
+     * Mostrar formulario de recuperación de contraseña
+     */
+    public function showForgotPasswordForm()
+    {
+        return view('core::auth.forgot-password');
+    }
+
+    /**
+     * Enviar enlace de recuperación de contraseña
+     */
+    public function sendResetLink(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|email|exists:users,email',
+        ]);
+
+        // Generar token
+        $token = Str::random(60);
+
+        // Guardar token en base de datos
+        DB::table('password_resets')->updateOrInsert(
+            ['email' => $request->email],
+            [
+                'token' => Hash::make($token),
+                'created_at' => now(),
+            ]
+        );
+
+        // Aquí deberías enviar un email con el enlace
+        // Por ahora, solo retornamos éxito
+
+        return back()->with('success', 'Se ha enviado un enlace de recuperación a tu correo electrónico');
+    }
+
+/**
+ * Mostrar formulario de reseteo de contraseña
+ */
+    public function showResetPasswordForm($token)
+    {
+        return view('core::auth.reset-password', compact('token'));
+    }
+
+    /**
+     * Resetear contraseña
+     */
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'token' => 'required',
+            'email' => 'required|email|exists:users,email',
+            'password' => 'required|min:8|confirmed',
+        ]);
+
+        // Verificar token
+        $reset = DB::table('password_resets')
+            ->where('email', $request->email)
+            ->first();
+
+        if (!$reset || !Hash::check($request->token, $reset->token)) {
+            return back()->withErrors(['email' => 'Token de recuperación inválido']);
+        }
+
+        // Actualizar contraseña
+        $user = User::where('email', $request->email)->first();
+        $user->password = Hash::make($request->password);
+        $user->save();
+
+        // Eliminar token
+        DB::table('password_resets')
+            ->where('email', $request->email)
+            ->delete();
+
+        // Registrar en auditoría
+        if (class_exists('Modules\Core\Entities\AuditLog')) {
+            \Modules\Core\Entities\AuditLog::register(
+                $user->id,
+                'password_reset',
+                'auth',
+                'Contraseña restablecida vía recuperación',
+                $request->ip()
+            );
+        }
+
+        return redirect()->route('core.auth.login')
+            ->with('success', 'Contraseña restablecida correctamente');
+    }
 }

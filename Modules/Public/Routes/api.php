@@ -10,6 +10,8 @@ use Modules\Public\Http\Controllers\PlanController;
 | API Routes - Público
 |--------------------------------------------------------------------------
 */
+$planController = 'Modules\Public\Http\Controllers\PlanController';
+
 
 Route::prefix('public')->name('public.')->group(function () {
 
@@ -27,9 +29,9 @@ Route::prefix('public')->name('public.')->group(function () {
     });
 
     // ==================== PLANES PÚBLICOS ====================
-    Route::prefix('plans')->name('plans.')->group(function () {
-        Route::get('/', [PlanController::class, 'index'])->name('index');
-        Route::get('/by-service', [PlanController::class, 'getByServiceType'])->name('by-service');
-        Route::get('/{id}', [PlanController::class, 'show'])->name('show');
+    Route::prefix('plans')->name('plans.')->group(function () use ($planController) {
+        Route::get('/', [$planController, 'index'])->name('index');
+        Route::get('/by-service', [$planController, 'getByServiceType'])->name('by-service');
+        Route::get('/{id}', [$planController, 'show'])->name('show');
     });
 });

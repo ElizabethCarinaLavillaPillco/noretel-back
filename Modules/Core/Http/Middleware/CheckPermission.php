@@ -39,6 +39,15 @@ class CheckPermission
             return redirect()->route('core.auth.login');
         }
 
+        $user = Auth::user();
+
+        // ========================================
+        // TEMPORAL: Permitir todo para super-admin
+        // ========================================
+        if ($user->hasRole('super-admin')) {
+            return $next($request);
+        }
+
         $context = [];
 
         // Si hay ruta con parámetro, agregarlo al contexto
@@ -47,12 +56,20 @@ class CheckPermission
         }
 
         // Primero verificamos si tiene permiso de gestión completa del módulo
-        if ($this->permissionService->hasPermission(Auth::id(), 'manage', $module, $context)) {
-            return $next($request);
-        }
+        try {
+            if ($this->permissionService->hasPermission(Auth::id(), 'manage', $module, $context)) {
+                return $next($request);
+            }
 
-        // Si no tiene permiso de gestión, verificamos el permiso específico
-        if (!$this->permissionService->hasPermission(Auth::id(), $permission, $module, $context)) {
+            // Si no tiene permiso de gestión, verificamos el permiso específico
+            if (!$this->permissionService->hasPermission(Auth::id(), $permission, $module, $context)) {
+                abort(403, 'No tiene permiso para acceder a este recurso.');
+            }
+        } catch (\Exception $e) {
+            // Si falla PermissionService, permitir para super-admin
+            if ($user->hasRole('super-admin')) {
+                return $next($request);
+            }
             abort(403, 'No tiene permiso para acceder a este recurso.');
         }
 

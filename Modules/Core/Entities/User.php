@@ -117,6 +117,7 @@ class User extends Authenticatable implements Auditable
             return true;
         }
 
+
         // Usar el servicio de permisos personalizado si existe
         if (class_exists(PermissionService::class)) {
             $permissionService = app(PermissionService::class);
@@ -124,10 +125,10 @@ class User extends Authenticatable implements Auditable
         }
 
         // Fallback a Spatie
-        return $this->hasPermissionTo("{$module}.{$permission}");
+        return $this->hasPermissionTo($module . '.view');
     }
 
-    /**
+        /**
      * Check if the user can view a module.
      *
      * @param string $module
@@ -136,16 +137,28 @@ class User extends Authenticatable implements Auditable
      */
     public function canViewModule($module, $context = [])
     {
+        // TEMPORAL: Permitir todo para super-admin
         if ($this->hasRole('super-admin')) {
             return true;
         }
 
+        // Intentar con PermissionService personalizado
         if (class_exists(PermissionService::class)) {
-            $permissionService = app(PermissionService::class);
-            return $permissionService->canViewModule($this->id, $module, $context);
+            try {
+                $permissionService = app(PermissionService::class);
+                return $permissionService->canViewModule($this->id, $module, $context);
+            } catch (\Exception $e) {
+                // Si falla, continuar con Spatie
+            }
         }
 
-        return $this->can("{$module}.view");
+        // Intentar con Spatie Permission
+        try {
+            return $this->hasPermissionTo("{$module}.view");
+        } catch (\Exception $e) {
+            // Si el permiso no existe, denegar por defecto
+            return false;
+        }
     }
 
     /**

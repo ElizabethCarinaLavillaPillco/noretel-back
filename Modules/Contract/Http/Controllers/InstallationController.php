@@ -8,8 +8,9 @@ use Illuminate\Routing\Controller;
 use Modules\Contract\Repositories\InstallationRepository;
 use Modules\Contract\Repositories\ContractRepository;
 use Modules\Contract\Repositories\RouteRepository;
-use Modules\Inventory\Repositories\EquipmentRepository;
-use Modules\Inventory\Repositories\MaterialRepository;
+// COMENTADAS: Dependencias del módulo Inventory que no existe
+// use Modules\Inventory\Repositories\EquipmentRepository;
+// use Modules\Inventory\Repositories\MaterialRepository;
 use Modules\Core\Repositories\EmployeeRepository;
 use Modules\Core\Entities\AuditLog;
 use Modules\Contract\Http\Requests\StoreInstallationRequest;
@@ -36,16 +37,6 @@ class InstallationController extends Controller
     protected $routeRepository;
 
     /**
-     * @var EquipmentRepository
-     */
-    protected $equipmentRepository;
-
-    /**
-     * @var MaterialRepository
-     */
-    protected $materialRepository;
-
-    /**
      * @var EmployeeRepository
      */
     protected $employeeRepository;
@@ -56,23 +47,17 @@ class InstallationController extends Controller
      * @param InstallationRepository $installationRepository
      * @param ContractRepository $contractRepository
      * @param RouteRepository $routeRepository
-     * @param EquipmentRepository $equipmentRepository
-     * @param MaterialRepository $materialRepository
      * @param EmployeeRepository $employeeRepository
      */
     public function __construct(
         InstallationRepository $installationRepository,
         ContractRepository $contractRepository,
         RouteRepository $routeRepository,
-        EquipmentRepository $equipmentRepository,
-        MaterialRepository $materialRepository,
         EmployeeRepository $employeeRepository
     ) {
         $this->installationRepository = $installationRepository;
         $this->contractRepository = $contractRepository;
         $this->routeRepository = $routeRepository;
-        $this->equipmentRepository = $equipmentRepository;
-        $this->materialRepository = $materialRepository;
         $this->employeeRepository = $employeeRepository;
     }
 
@@ -134,9 +119,9 @@ class InstallationController extends Controller
         $todayCount = $this->installationRepository->getScheduledForToday()->count();
 
         return view('contract::installations.index', compact(
-            'installations', 
-            'search', 
-            'status', 
+            'installations',
+            'search',
+            'status',
             'technician',
             'date',
             'contractId',
@@ -173,8 +158,11 @@ class InstallationController extends Controller
 
         $technicians = $this->employeeRepository->findByPosition('technician');
         $routes = $this->routeRepository->query()->where('status', ['scheduled', 'in_progress'])->get();
-        $equipment = $this->equipmentRepository->getAvailableEquipment();
-        $materials = $this->materialRepository->getAvailableMaterials();
+
+        // TEMPORALMENTE: Arrays vacíos para equipment y materials
+        // Cuando crees el módulo Inventory, descomentar las líneas originales
+        $equipment = [];
+        $materials = [];
 
         return view('contract::installations.create', compact(
             'contract',
@@ -194,7 +182,7 @@ class InstallationController extends Controller
     public function store(StoreInstallationRequest $request)
     {
         $data = $request->validated();
-        
+
         // Prepare installation data
         $installationData = [
             'contract_id' => $data['contract_id'],
@@ -204,62 +192,40 @@ class InstallationController extends Controller
             'status' => 'scheduled',
             'notes' => $data['notes'] ?? null,
         ];
-        
-        // Prepare equipment data
+
+        // Prepare equipment data (temporalmente vacío)
         $equipment = [];
-        if (isset($data['equipment']) && is_array($data['equipment'])) {
-            foreach ($data['equipment'] as $item) {
-                if (isset($item['equipment_id']) && $item['equipment_id']) {
-                    $equipment[] = [
-                        'equipment_id' => $item['equipment_id'],
-                        'serial' => $item['serial'] ?? null,
-                        'mac_address' => $item['mac_address'] ?? null,
-                        'status' => 'assigned',
-                    ];
-                }
-            }
-        }
-        
-        // Prepare materials data
+
+        // Prepare materials data (temporalmente vacío)
         $materials = [];
-        if (isset($data['materials']) && is_array($data['materials'])) {
-            foreach ($data['materials'] as $item) {
-                if (isset($item['material_id']) && $item['material_id'] && isset($item['quantity']) && $item['quantity'] > 0) {
-                    $materials[] = [
-                        'material_id' => $item['material_id'],
-                        'quantity' => $item['quantity'],
-                    ];
-                }
-            }
-        }
-        
+
         // Create installation with equipment and materials
         $installation = $this->installationRepository->createWithDetails($installationData, $equipment, $materials);
-        
+
         // Register action for audit log
         AuditLog::register(
             Auth::id(),
             'installation_created',
             'installations',
-            "Instalación programada para el contrato #{$installation->contract_id}",
+            "Instalación creada para el contrato #{$installation->contract_id}",
             $request->ip(),
             null,
             $installation->toArray()
         );
-        
+
         return redirect()->route('contract.installations.show', $installation->id)
-            ->with('success', 'Instalación programada correctamente.');
+            ->with('success', 'Instalación creada correctamente.');
     }
 
     /**
-     * Show the specified resource.
+     * Display the specified resource.
      * @param int $id
      * @return Renderable
      */
     public function show($id)
     {
         $installation = $this->installationRepository->getWithRelations($id);
-        
+
         return view('contract::installations.show', compact('installation'));
     }
 
@@ -271,25 +237,10 @@ class InstallationController extends Controller
     public function edit($id)
     {
         $installation = $this->installationRepository->getWithRelations($id);
-        
-        // Check if installation can be edited
-        if ($installation->status === 'completed' || $installation->status === 'cancelled') {
-            return redirect()->route('contract.installations.show', $id)
-                ->with('error', 'No se puede editar una instalación completada o cancelada.');
-        }
-        
         $technicians = $this->employeeRepository->findByPosition('technician');
-        $routes = $this->routeRepository->query()->whereIn('status', ['scheduled', 'in_progress'])->get();
-        $equipment = $this->equipmentRepository->getAvailableEquipment();
-        $materials = $this->materialRepository->getAvailableMaterials();
-        
-        return view('contract::installations.edit', compact(
-            'installation',
-            'technicians',
-            'routes',
-            'equipment',
-            'materials'
-        ));
+        $routes = $this->routeRepository->query()->where('status', ['scheduled', 'in_progress'])->get();
+
+        return view('contract::installations.edit', compact('installation', 'technicians', 'routes'));
     }
 
     /**
@@ -301,62 +252,26 @@ class InstallationController extends Controller
     public function update(UpdateInstallationRequest $request, $id)
     {
         $installation = $this->installationRepository->find($id);
-        $data = $request->validated();
-        
+
         // Save old data for audit
         $oldData = $installation->toArray();
-        
-        // Prepare installation data
-        $installationData = [
-            'technician_id' => $data['technician_id'],
-            'route_id' => $data['route_id'] ?? null,
-            'scheduled_date' => $data['scheduled_date'],
-            'status' => $data['status'] ?? $installation->status,
-            'notes' => $data['notes'] ?? $installation->notes,
-        ];
-        
-        // Prepare equipment data
-        $equipment = [];
-        if (isset($data['equipment']) && is_array($data['equipment'])) {
-            foreach ($data['equipment'] as $item) {
-                if (isset($item['equipment_id']) && $item['equipment_id']) {
-                    $equipment[] = [
-                        'equipment_id' => $item['equipment_id'],
-                        'serial' => $item['serial'] ?? null,
-                        'mac_address' => $item['mac_address'] ?? null,
-                        'status' => 'assigned',
-                    ];
-                }
-            }
-        }
-        
-        // Prepare materials data
-        $materials = [];
-        if (isset($data['materials']) && is_array($data['materials'])) {
-            foreach ($data['materials'] as $item) {
-                if (isset($item['material_id']) && $item['material_id'] && isset($item['quantity']) && $item['quantity'] > 0) {
-                    $materials[] = [
-                        'material_id' => $item['material_id'],
-                        'quantity' => $item['quantity'],
-                    ];
-                }
-            }
-        }
-        
-        // Update installation with equipment and materials
-        $installation = $this->installationRepository->updateWithDetails($id, $installationData, $equipment, $materials);
-        
+
+        $data = $request->validated();
+
+        // Update installation
+        $installation->update($data);
+
         // Register action for audit log
         AuditLog::register(
             Auth::id(),
             'installation_updated',
             'installations',
-            "Instalación actualizada para el contrato #{$installation->contract_id}",
+            "Instalación actualizada #{$installation->id}",
             $request->ip(),
             $oldData,
             $installation->toArray()
         );
-        
+
         return redirect()->route('contract.installations.show', $installation->id)
             ->with('success', 'Instalación actualizada correctamente.');
     }
@@ -370,30 +285,30 @@ class InstallationController extends Controller
     public function destroy($id, Request $request)
     {
         $installation = $this->installationRepository->find($id);
-        
+
         // Check if installation can be deleted
         if ($installation->status === 'completed') {
             return redirect()->route('contract.installations.index')
                 ->with('error', 'No se puede eliminar una instalación completada.');
         }
-        
+
         // Save old data for audit
         $installationData = $installation->toArray();
-        
+
         // Delete installation
-        $this->installationRepository->delete($id);
-        
+        $installation->delete();
+
         // Register action for audit log
         AuditLog::register(
             Auth::id(),
             'installation_deleted',
             'installations',
-            "Instalación eliminada para el contrato #{$installation->contract_id}",
+            "Instalación eliminada #{$installation->id}",
             $request->ip(),
             $installationData,
             null
         );
-        
+
         return redirect()->route('contract.installations.index')
             ->with('success', 'Instalación eliminada correctamente.');
     }
@@ -406,13 +321,13 @@ class InstallationController extends Controller
     public function showCompleteForm($id)
     {
         $installation = $this->installationRepository->getWithRelations($id);
-        
+
         // Check if installation can be completed
         if ($installation->status === 'completed' || $installation->status === 'cancelled') {
             return redirect()->route('contract.installations.show', $id)
                 ->with('error', 'No se puede completar una instalación ya finalizada o cancelada.');
         }
-        
+
         return view('contract::installations.complete', compact('installation'));
     }
 
@@ -426,16 +341,16 @@ class InstallationController extends Controller
     {
         $installation = $this->installationRepository->find($id);
         $data = $request->validated();
-        
+
         // Save old data for audit
         $oldData = $installation->toArray();
-        
+
         // Prepare completion data
         $completionData = [
             'completed_date' => $data['completed_date'] ?? now(),
             'notes' => $data['notes'] ?? $installation->notes,
         ];
-        
+
         // Handle customer signature if provided
         if ($request->has('customer_signature')) {
             $image = $request->get('customer_signature');
@@ -443,33 +358,33 @@ class InstallationController extends Controller
                 // Remove header from base64 string
                 $image = str_replace('data:image/png;base64,', '', $image);
                 $image = str_replace(' ', '+', $image);
-                
+
                 // Save signature image
                 $imageName = 'signatures/' . uniqid() . '.png';
                 Storage::put('public/' . $imageName, base64_decode($image));
-                
+
                 $completionData['customer_signature'] = $imageName;
             }
         }
-        
+
         // Handle photos
         $photos = [];
         if ($request->hasFile('photos')) {
             foreach ($request->file('photos') as $index => $file) {
                 $path = $file->store('installation_photos', 'public');
-                
+
                 $description = $data['photo_descriptions'][$index] ?? null;
-                
+
                 $photos[] = [
                     'file_path' => $path,
                     'description' => $description,
                 ];
             }
         }
-        
+
         // Complete installation
         $installation = $this->installationRepository->completeInstallation($id, $completionData, $photos);
-        
+
         // Register action for audit log
         AuditLog::register(
             Auth::id(),
@@ -480,7 +395,7 @@ class InstallationController extends Controller
             $oldData,
             $installation->toArray()
         );
-        
+
         return redirect()->route('contract.installations.show', $installation->id)
             ->with('success', 'Instalación completada correctamente.');
     }
@@ -496,24 +411,24 @@ class InstallationController extends Controller
         $request->validate([
             'reason' => 'required|string|max:500'
         ]);
-        
+
         $installation = $this->installationRepository->find($id);
-        
+
         // Check if installation can be cancelled
         if ($installation->status === 'completed' || $installation->status === 'cancelled') {
             return redirect()->route('contract.installations.show', $id)
                 ->with('error', 'No se puede cancelar una instalación ya finalizada o cancelada.');
         }
-        
+
         // Save old data for audit
         $oldData = $installation->toArray();
-        
+
         // Cancel installation
         $installation->update([
             'status' => 'cancelled',
             'notes' => $request->reason
         ]);
-        
+
         // Register action for audit log
         AuditLog::register(
             Auth::id(),
@@ -524,7 +439,7 @@ class InstallationController extends Controller
             $oldData,
             $installation->toArray()
         );
-        
+
         return redirect()->route('contract.installations.show', $installation->id)
             ->with('success', 'Instalación cancelada correctamente.');
     }
@@ -536,7 +451,7 @@ class InstallationController extends Controller
     public function today()
     {
         $installations = $this->installationRepository->getScheduledForToday();
-        
+
         return view('contract::installations.today', compact('installations'));
     }
 
@@ -547,7 +462,7 @@ class InstallationController extends Controller
     public function pending()
     {
         $installations = $this->installationRepository->getPendingInstallations();
-        
+
         return view('contract::installations.pending', compact('installations'));
     }
 
@@ -558,7 +473,7 @@ class InstallationController extends Controller
     public function late()
     {
         $installations = $this->installationRepository->getLateInstallations();
-        
+
         return view('contract::installations.late', compact('installations'));
     }
 
@@ -574,18 +489,18 @@ class InstallationController extends Controller
             'photo' => 'required|image|max:10240',
             'description' => 'nullable|string|max:255'
         ]);
-        
+
         $installation = $this->installationRepository->find($id);
-        
+
         // Store the photo
         $path = $request->file('photo')->store('installation_photos', 'public');
-        
+
         // Create photo record
         $photo = $installation->photos()->create([
             'file_path' => $path,
             'description' => $request->description
         ]);
-        
+
         // Register action for audit log
         AuditLog::register(
             Auth::id(),
@@ -596,7 +511,7 @@ class InstallationController extends Controller
             null,
             $photo->toArray()
         );
-        
+
         return redirect()->route('contract.installations.show', $installation->id)
             ->with('success', 'Foto añadida correctamente.');
     }
@@ -612,16 +527,16 @@ class InstallationController extends Controller
     {
         $installation = $this->installationRepository->find($id);
         $photo = $installation->photos()->findOrFail($photoId);
-        
+
         // Save old data for audit
         $photoData = $photo->toArray();
-        
+
         // Delete file from storage
         Storage::disk('public')->delete($photo->file_path);
-        
+
         // Delete photo record
         $photo->delete();
-        
+
         // Register action for audit log
         AuditLog::register(
             Auth::id(),
@@ -632,7 +547,7 @@ class InstallationController extends Controller
             $photoData,
             null
         );
-        
+
         return redirect()->route('contract.installations.show', $installation->id)
             ->with('success', 'Foto eliminada correctamente.');
     }
