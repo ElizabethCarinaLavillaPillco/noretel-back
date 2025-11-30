@@ -11,6 +11,7 @@ use Modules\Services\Services\PromotionService;
 use Modules\Services\Http\Requests\PlanRequest;
 use Illuminate\Support\Facades\Auth;
 use Modules\Services\Repositories\PlanRepository;
+use Modules\Services\Entities\Plan;
 
 class PlanController extends Controller
 {
@@ -87,6 +88,8 @@ class PlanController extends Controller
 
         $services = $this->serviceService->getAllServices(true)['services'];
         $promotions = $this->promotionService->getAllPromotions(true)['promotions'];
+
+        \Log::info('Servicios obtenidos:', ['services' => $services]);
 
         $selectedService = null;
         if ($serviceId) {
@@ -277,20 +280,96 @@ class PlanController extends Controller
     {
         try {
             // Obtener solo planes activos con sus relaciones
-            $plans = $this->planRepository->query()
-                ->where('active', true)
+            $plans = Plan::where('active', true)
                 ->with(['service', 'promotions' => function ($query) {
                     $query->where('active', true)
                         ->where('start_date', '<=', now())
                         ->where('end_date', '>=', now());
                 }])
-                ->orderBy('order', 'asc')
+                //->orderBy('order', 'asc')
                 ->orderBy('price', 'asc')
                 ->get();
 
             // Formatear planes para el frontend
             $formattedPlans = $plans->map(function ($plan) {
-                return $this->formatPlanForFrontend($plan);
+                // Calcular precio con descuento
+                $originalPrice = (float) $plan->price;
+                $discountedPrice = $originalPrice;
+                $activePromotion = null;
+                $discountPercentage = 0;
+
+                // Si tiene promociones activas, calcular descuento
+                if ($plan->promotions && $plan->promotions->count() > 0) {
+                    $promotion = $plan->promotions->first();
+                    $activePromotion = [
+                        'id' => $promotion->id,
+                        'name' => $promotion->name,
+                        'description' => $promotion->description ?? '',
+                    ];
+
+                    if ($promotion->discount_type === 'percentage') {
+                        $discountPercentage = (float) $promotion->discount;
+                        $discountedPrice = $originalPrice * (1 - ($discountPercentage / 100));
+                    } else {
+                        $discountedPrice = max(0, $originalPrice - (float) $promotion->discount);
+                        $discountPercentage = (($originalPrice - $discountedPrice) / $originalPrice) * 100;
+                    }
+                }
+
+                // Parsear características
+                $features = [];
+                if ($plan->features) {
+                    $features = is_string($plan->features) ? json_decode($plan->features, true) : $plan->features;
+                    $features = is_array($features) ? $features : [];
+                }
+
+                // Determinar rango de velocidad
+                $speed = (float) ($plan->download_speed ?? 0);
+                $speedRange = '0-50';
+                if ($speed >= 50 && $speed < 100) $speedRange = '50-100';
+                elseif ($speed >= 100 && $speed < 200) $speedRange = '100-200';
+                elseif ($speed >= 200 && $speed < 500) $speedRange = '200-500';
+                elseif ($speed >= 500) $speedRange = '500+';
+
+                // Determinar rango de precio
+                $paymentRange = '0-50';
+                if ($discountedPrice >= 50 && $discountedPrice < 100) $paymentRange = '50-100';
+                elseif ($discountedPrice >= 100 && $discountedPrice < 150) $paymentRange = '100-150';
+                elseif ($discountedPrice >= 150 && $discountedPrice < 200) $paymentRange = '150-200';
+                elseif ($discountedPrice >= 200) $paymentRange = '200+';
+
+                return [
+                    'id' => $plan->id,
+                    'type' => $discountedPrice < $originalPrice ? 'serviceTwo' : 'service',
+                    'title' => $plan->name,
+                    'description' => $plan->description ?? '',
+                    'price' => round($discountedPrice, 2),
+                    'originalPrice' => round($originalPrice, 2),
+                    'discountedPrice' => round($discountedPrice, 2),
+                    'currency' => 'S/',
+                    'period' => 'mensual',
+                    'hasDiscount' => $discountedPrice < $originalPrice,
+                    'discountPercentage' => round($discountPercentage, 0),
+                    'speed' => $speed,
+                    'speedUnit' => 'Mbps',
+                    'downloadSpeed' => (float) ($plan->download_speed ?? 0),
+                    'uploadSpeed' => (float) ($plan->upload_speed ?? 0),
+                    'speedRange' => $speedRange,
+                    'paymentRange' => $paymentRange,
+                    'features' => $features,
+                    'service' => [
+                        'id' => $plan->service->id ?? null,
+                        'name' => $plan->service->name ?? 'Servicio',
+                        'type' => $plan->service->service_type ?? 'internet',
+                    ],
+                    'promotion' => $activePromotion,
+                    'buttonText' => 'Contratar',
+                    'technicalTitle' => 'Especificaciones Técnicas',
+                    'technicalDetails' => [
+                        'Descarga ' . $plan->download_speed . ' Mbps',
+                        'Subida ' . $plan->upload_speed . ' Mbps'
+                    ],
+                ];
             });
 
             return response()->json([
@@ -299,6 +378,9 @@ class PlanController extends Controller
                 'total' => $formattedPlans->count(),
             ]);
         } catch (\Exception $e) {
+            \Log::error('Error en apiIndex de PlanController: ' . $e->getMessage());
+            \Log::error($e->getTraceAsString());
+
             return response()->json([
                 'success' => false,
                 'message' => 'Error al obtener planes',
@@ -358,7 +440,7 @@ class PlanController extends Controller
                         ->where('start_date', '<=', now())
                         ->where('end_date', '>=', now());
                 }])
-                ->orderBy('order', 'asc')
+                //->orderBy('order', 'asc')
                 ->orderBy('price', 'asc')
                 ->get();
 
@@ -474,7 +556,7 @@ class PlanController extends Controller
             'popularity' => $plan->popularity_score ?? 0,
             'buttonText' => 'Contratar',
             'technicalTitle' => 'Especificaciones Técnicas',
-            'order' => $plan->order ?? 999,
+            //'order' => $plan->order ?? 999,
 
             // Información adicional
             'contract_duration' => $plan->contract_duration ?? 12,

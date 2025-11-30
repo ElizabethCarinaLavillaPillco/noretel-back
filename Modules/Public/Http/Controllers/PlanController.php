@@ -7,6 +7,8 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
 use Modules\Services\Repositories\PlanRepository;
 use Modules\Services\Repositories\PromotionRepository;
+use Modules\Services\Entities\Plan;
+use Modules\Services\Entities\Promotion;
 
 class PlanController extends Controller
 {
@@ -45,7 +47,7 @@ class PlanController extends Controller
                 ->with(['service', 'promotions' => function ($query) {
                     $query->currentlyActive();
                 }])
-                ->orderBy('order', 'asc')
+                //->orderBy('order', 'asc')
                 ->orderBy('price', 'asc')
                 ->get();
 
@@ -120,7 +122,7 @@ class PlanController extends Controller
                 ->with(['service', 'promotions' => function ($query) {
                     $query->currentlyActive();
                 }])
-                ->orderBy('order', 'asc')
+                //->orderBy('order', 'asc')
                 ->orderBy('price', 'asc')
                 ->get();
 

@@ -42,7 +42,7 @@ class Plan extends Model
      */
     public function promotions()
     {
-        return $this->belongsToMany(Promotion::class);
+        return $this->belongsToMany(Promotion::class, 'plan_promotion');
     }
 
     /**
