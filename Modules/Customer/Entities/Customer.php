@@ -4,20 +4,15 @@ namespace Modules\Customer\Entities;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Modules\Core\Entities\AuditLog;
-use OwenIt\Auditing\Contracts\Auditable;
-use OwenIt\Auditing\Auditable as AuditableTrait;
+use Modules\Core\Entities\User;
+use Modules\Contract\Entities\Contract;
 
-class Customer extends Model implements Auditable
+class Customer extends Model
 {
-    use HasFactory, AuditableTrait;
+    use HasFactory;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<int, string>
-     */
     protected $fillable = [
+        'user_id',
         'customer_type',
         'first_name',
         'last_name',
@@ -28,23 +23,48 @@ class Customer extends Model implements Auditable
         'contact_preferences',
         'segment',
         'registration_date',
-        'active'
+        'active',
+        'customer_status',
+        'first_purchase_at',
+        'last_purchase_at',
+        'churned_at',
+        'lifetime_value',
+        'contract_count',
+        'months_as_customer',
+        'acquisition_channel',
+        'utm_source',
+        'utm_campaign',
     ];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
     protected $casts = [
-        'registration_date' => 'datetime',
         'active' => 'boolean',
-        'credit_score' => 'integer',
-        'contact_preferences' => 'json'
+        'registration_date' => 'datetime',
+        'first_purchase_at' => 'datetime',
+        'last_purchase_at' => 'datetime',
+        'churned_at' => 'datetime',
+        'lifetime_value' => 'decimal:2',
     ];
 
+    // ==================== RELACIONES ====================
+
     /**
-     * Get the addresses for the customer.
+     * Usuario asociado (cuenta en el sistema)
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Contratos del cliente
+     */
+    public function contracts()
+    {
+        return $this->hasMany(Contract::class);
+    }
+
+    /**
+     * Direcciones
      */
     public function addresses()
     {
@@ -52,7 +72,7 @@ class Customer extends Model implements Auditable
     }
 
     /**
-     * Get the emergency contacts for the customer.
+     * Contactos de emergencia
      */
     public function emergencyContacts()
     {
@@ -60,7 +80,7 @@ class Customer extends Model implements Auditable
     }
 
     /**
-     * Get the documents for the customer.
+     * Documentos
      */
     public function documents()
     {
@@ -68,144 +88,136 @@ class Customer extends Model implements Auditable
     }
 
     /**
-     * Get the interactions for the customer.
+     * Interacciones
      */
     public function interactions()
     {
         return $this->hasMany(Interaction::class);
     }
 
-    /**
-     * Get the leads associated with the customer.
-     */
-    public function leads()
+    // ==================== SCOPES ====================
+
+    public function scopeLead($query)
     {
-        return $this->belongsToMany(Lead::class, 'customer_lead')
-                    ->withPivot('conversion_date', 'notes')
-                    ->withTimestamps();
+        return $query->where('customer_status', 'lead');
+    }
+
+    public function scopeProspect($query)
+    {
+        return $query->where('customer_status', 'prospect');
+    }
+
+    public function scopeNew($query)
+    {
+        return $query->where('customer_status', 'new');
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('customer_status', 'active');
+    }
+
+    public function scopeFormer($query)
+    {
+        return $query->where('customer_status', 'former');
+    }
+
+    public function scopeHasAccount($query)
+    {
+        return $query->whereNotNull('user_id');
+    }
+
+    public function scopeWithoutAccount($query)
+    {
+        return $query->whereNull('user_id');
+    }
+
+    // ==================== MÉTODOS ====================
+
+    /**
+     * Verificar si tiene cuenta en el sistema
+     */
+    public function hasAccount(): bool
+    {
+        return !is_null($this->user_id);
     }
 
     /**
-     * Get the primary address for the customer.
+     * Obtener nombre completo
      */
-    public function primaryAddress()
-    {
-        return $this->hasOne(Address::class)->where('is_primary', true);
-    }
-
-    /**
-     * Get the full name of the customer.
-     *
-     * @return string
-     */
-    public function getFullNameAttribute()
+    public function getFullNameAttribute(): string
     {
         return "{$this->first_name} {$this->last_name}";
     }
 
     /**
-     * Scope a query to only include active customers.
-     *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @return \Illuminate\Database\Eloquent\Builder
+     * Verificar si es cliente oficial (> 3 meses)
      */
-    public function scopeActive($query)
+    public function isOfficialCustomer(): bool
     {
-        return $query->where('active', true);
+        return $this->customer_status === 'active' &&
+               $this->months_as_customer >= 3;
     }
 
     /**
-     * Scope a query to only include customers of a specific type.
-     *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @param  string  $type
-     * @return \Illuminate\Database\Eloquent\Builder
+     * Verificar si es cliente nuevo (< 3 meses)
      */
-    public function scopeOfType($query, $type)
+    public function isNewCustomer(): bool
     {
-        return $query->where('customer_type', $type);
+        return $this->customer_status === 'new' ||
+               ($this->customer_status === 'active' && $this->months_as_customer < 3);
     }
 
     /**
-     * Scope a query to only include customers in a specific segment.
-     *
-     * @param  \Illuminate\Database\Eloquent\Builder  $query
-     * @param  string  $segment
-     * @return \Illuminate\Database\Eloquent\Builder
+     * Actualizar estado del cliente basado en contratos
      */
-    public function scopeInSegment($query, $segment)
+    public function updateCustomerStatus()
     {
-        return $query->where('segment', $segment);
+        $activeContracts = $this->contracts()->where('status', 'active')->count();
+
+        if ($activeContracts === 0) {
+            // Sin contratos activos
+            if ($this->contract_count > 0) {
+                $this->customer_status = 'former'; // Cliente antiguo
+            } else {
+                $this->customer_status = 'lead'; // Solo preguntó
+            }
+        } else {
+            // Con contratos activos
+            if ($this->months_as_customer >= 3) {
+                $this->customer_status = 'active'; // Cliente oficial
+            } else {
+                $this->customer_status = 'new'; // Cliente nuevo
+            }
+        }
+
+        $this->save();
     }
 
     /**
-     * Check if the customer has any active contracts.
-     *
-     * @return bool
+     * Calcular meses como cliente
      */
-    public function hasActiveContracts()
+    public function calculateMonthsAsCustomer()
     {
-        // Implementar cuando esté disponible el módulo de contratos
-        return false;
+        if (!$this->first_purchase_at) {
+            $this->months_as_customer = 0;
+            return;
+        }
+
+        $this->months_as_customer = $this->first_purchase_at->diffInMonths(now());
+        $this->save();
     }
 
     /**
-     * Get the customer's contracts.
-     * (Esta será implementada cuando el módulo de contratos esté disponible)
+     * Calcular valor de por vida (LTV)
      */
-    // public function contracts()
-    // {
-    //     return $this->hasMany(Contract::class);
-    // }
+    public function calculateLifetimeValue()
+    {
+        $this->lifetime_value = $this->contracts()
+            ->join('invoices', 'contracts.id', '=', 'invoices.contract_id')
+            ->where('invoices.status', 'paid')
+            ->sum('invoices.total_amount');
+
+        $this->save();
+    }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

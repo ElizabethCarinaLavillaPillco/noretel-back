@@ -6,13 +6,14 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | Web Routes
 |--------------------------------------------------------------------------
-|
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider and all of them will
-| be assigned to the "web" middleware group. Make something great!
-|
 */
 
 Route::get('/', function () {
-    return view('core::auth.login');
+    // Si el usuario está autenticado, redirigir al dashboard
+    if (auth()->check()) {
+        return redirect()->route('core.dashboard');
+    }
+
+    // Si no está autenticado, mostrar login
+    return redirect()->route('core.auth.login');
 });

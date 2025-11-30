@@ -2,215 +2,289 @@
 
 namespace Modules\Core\Http\Controllers;
 
-use Illuminate\Contracts\Support\Renderable;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Routing\Controller;
-use Modules\Core\Services\AuthService;
-use Modules\Core\Http\Requests\LoginRequest;
-use Modules\Core\Http\Requests\RegisterRequest;
-use Modules\Core\Http\Requests\ResetPasswordRequest;
-use Modules\Core\Http\Requests\ForgotPasswordRequest;
-use Modules\Core\Http\Requests\ChangePasswordRequest;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Auth;
+use Modules\Core\Entities\User;
+use Modules\Customer\Entities\Customer;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class AuthController extends Controller
 {
-    /**
-     * @var AuthService
-     */
-    protected $authService;
+    // ==================== MÉTODOS WEB (para admin Laravel) ====================
 
     /**
-     * AuthController constructor.
-     *
-     * @param AuthService $authService
-     */
-    public function __construct(AuthService $authService)
-    {
-        $this->authService = $authService;
-    }
-
-    /**
-     * Show the login form.
-     * 
-     * @return Renderable
+     * Mostrar formulario de login (para admin Laravel)
      */
     public function showLoginForm()
     {
+        if (Auth::check()) {
+            return redirect()->route('core.dashboard');
+        }
+
         return view('core::auth.login');
     }
 
     /**
-     * Handle login request.
-     * 
-     * @param LoginRequest $request
-     * @return \Illuminate\Http\Response
+     * Procesar login web (para admin Laravel)
      */
-    public function login(LoginRequest $request)
+    public function loginWeb(Request $request)
     {
-        $result = $this->authService->login(
-            $request->username,
-            $request->password,
-            $request->ip()
-        );
-        
-        if (!$result['success']) {
-            return back()->withErrors([
-                'message' => $result['message']
-            ])->withInput($request->except('password'));
+        $credentials = $request->validate([
+            'email' => 'required|email',
+            'password' => 'required',
+        ]);
+
+        $remember = $request->has('remember');
+
+        if (Auth::attempt($credentials, $remember)) {
+            $request->session()->regenerate();
+
+            $user = Auth::user();
+
+            if (!$user->hasAnyRole(['super-admin', 'admin', 'technician'])) {
+                Auth::logout();
+                return back()->withErrors([
+                    'email' => 'No tienes permisos para acceder al panel administrativo.',
+                ]);
+            }
+
+            return redirect()->intended(route('core.dashboard'));
         }
-        
-        // Si requiere 2FA, redirigir a pantalla 2FA
-        if ($result['requires_2fa']) {
-            return redirect()->route('core.auth.2fa');
+
+        return back()->withErrors([
+            'email' => 'Las credenciales proporcionadas no coinciden con nuestros registros.',
+        ])->withInput($request->only('email'));
+    }
+
+    /**
+     * Cerrar sesión web (para admin Laravel)
+     */
+    public function logoutWeb(Request $request)
+    {
+        Auth::logout();
+
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return redirect()->route('core.auth.login')->with('success', 'Sesión cerrada correctamente');
+    }
+
+    // ==================== MÉTODOS API (para Vue.js) ====================
+
+    /**
+     * Registrar nuevo usuario (API para Vue.js)
+     */
+    public function register(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'email' => 'required|email|unique:users,email',
+            'phone' => 'required|string|max:20',
+            'identity_document' => 'nullable|string|max:20',
+            'password' => 'required|string|min:8|confirmed',
+            'customer_type' => 'required|in:individual,company',
+            'acquisition_channel' => 'nullable|string',
+            'utm_source' => 'nullable|string',
+            'utm_campaign' => 'nullable|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Datos de registro inválidos',
+                'errors' => $validator->errors(),
+            ], 422);
         }
-        
-        return redirect()->intended(route('core.dashboard'));
-    }
 
-    /**
-     * Handle logout request.
-     * 
-     * @param Request $request
-     * @return \Illuminate\Http\Response
-     */
-    public function logout(Request $request)
-    {
-        $this->authService->logout($request->ip());
-        
-        return redirect()->route('core.auth.login');
-    }
+        try {
+            DB::beginTransaction();
 
-    /**
-     * Show the registration form.
-     * 
-     * @return Renderable
-     */
-    public function showRegistrationForm()
-    {
-        return view('core::auth.register');
-    }
+            // Generar username único
+            $baseUsername = Str::slug($request->first_name . '.' . $request->last_name, '.');
+            $username = $baseUsername;
+            $counter = 1;
 
-    /**
-     * Handle registration request.
-     * 
-     * @param RegisterRequest $request
-     * @return \Illuminate\Http\Response
-     */
-    public function register(RegisterRequest $request)
-    {
-        $result = $this->authService->register(
-            $request->validated(),
-            $request->ip()
-        );
-        
-        if (!$result['success']) {
-            return back()->withErrors([
-                'message' => $result['message'],
-                'errors' => $result['errors'] ?? []
-            ])->withInput($request->except('password', 'password_confirmation'));
-        }
-        
-        return redirect()->route('core.auth.login')
-            ->with('success', 'Usuario registrado correctamente. Por favor inicie sesión.');
-    }
+            while (User::where('username', $username)->exists()) {
+                $username = $baseUsername . $counter;
+                $counter++;
+            }
 
-    /**
-     * Show the forgot password form.
-     * 
-     * @return Renderable
-     */
-    public function showForgotPasswordForm()
-    {
-        return view('core::auth.forgot-password');
-    }
-
-    /**
-     * Handle forgot password request.
-     * 
-     * @param ForgotPasswordRequest $request
-     * @return \Illuminate\Http\Response
-     */
-    public function forgotPassword(ForgotPasswordRequest $request)
-    {
-        $result = $this->authService->requestPasswordReset(
-            $request->email,
-            $request->ip()
-        );
-        
-        return redirect()->route('core.auth.login')
-            ->with('success', $result['message']);
-    }
-
-    /**
-     * Show the reset password form.
-     * 
-     * @param string $token
-     * @return Renderable
-     */
-    public function showResetPasswordForm($token)
-    {
-        return view('core::auth.reset-password', ['token' => $token]);
-    }
-
-    /**
-     * Handle reset password request.
-     * 
-     * @param ResetPasswordRequest $request
-     * @return \Illuminate\Http\Response
-     */
-    public function resetPassword(ResetPasswordRequest $request)
-    {
-        $result = $this->authService->resetPassword(
-            $request->token,
-            $request->email,
-            $request->password,
-            $request->ip()
-        );
-        
-        if (!$result['success']) {
-            return back()->withErrors([
-                'message' => $result['message'],
-                'errors' => $result['errors'] ?? []
-            ])->withInput($request->except('password', 'password_confirmation'));
-        }
-        
-        return redirect()->route('core.auth.login')
-            ->with('success', $result['message']);
-    }
-
-    /**
-     * Show the change password form.
-     * 
-     * @return Renderable
-     */
-    public function showChangePasswordForm()
-    {
-        return view('core::auth.change-password');
-    }
-
-    /**
-     * Handle change password request.
-     * 
-     * @param ChangePasswordRequest $request
-     * @return \Illuminate\Http\Response
-     */
-    public function changePassword(ChangePasswordRequest $request)
-    {
-        $result = $this->authService->changePassword(
-            Auth::id(),
-            $request->current_password,
-            $request->password,
-            $request->ip()
-        );
-        
-        if (!$result['success']) {
-            return back()->withErrors([
-                'message' => $result['message'],
-                'errors' => $result['errors'] ?? []
+            // Crear usuario
+            $user = User::create([
+                'username' => $username,
+                'email' => $request->email,
+                'password' => Hash::make($request->password),
+                'status' => 'active',
+                'email_verified_at' => now(),
             ]);
+
+            // Crear cliente
+            $customer = Customer::create([
+                'user_id' => $user->id,
+                'customer_type' => $request->customer_type,
+                'first_name' => $request->first_name,
+                'last_name' => $request->last_name,
+                'identity_document' => $request->identity_document,
+                'email' => $request->email,
+                'phone' => $request->phone,
+                'customer_status' => 'prospect',
+                'registration_date' => now(),
+                'active' => true,
+                'acquisition_channel' => $request->acquisition_channel ?? 'web',
+                'utm_source' => $request->utm_source,
+                'utm_campaign' => $request->utm_campaign,
+            ]);
+
+            $user->assignRole('customer');
+
+            $token = $user->createToken('auth_token')->plainTextToken;
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => '¡Cuenta creada exitosamente!',
+                'data' => [
+                    'user' => [
+                        'id' => $user->id,
+                        'username' => $user->username,
+                        'email' => $user->email,
+                        'roles' => $user->roles,
+                    ],
+                    'customer' => [
+                        'id' => $customer->id,
+                        'full_name' => $customer->full_name,
+                        'email' => $customer->email,
+                        'phone' => $customer->phone,
+                        'customer_status' => $customer->customer_status,
+                        'months_as_customer' => $customer->months_as_customer ?? 0,
+                    ],
+                    'token' => $token,
+                ],
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Error en registro: ' . $e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al crear cuenta. Por favor, intenta de nuevo.',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
         }
-        
-        return back()->with('success', $result['message']);
+    }
+
+    /**
+     * Login API (para Vue.js)
+     */
+    public function login(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email',
+            'password' => 'required|string',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Datos de inicio de sesión inválidos',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $user = User::where('email', $request->email)->first();
+
+        if (!$user || !Hash::check($request->password, $user->password)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Credenciales incorrectas',
+            ], 401);
+        }
+
+        if ($user->status !== 'active') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tu cuenta está inactiva. Contacta a soporte.',
+            ], 403);
+        }
+
+        $customer = Customer::where('user_id', $user->id)->first();
+        $token = $user->createToken('auth_token')->plainTextToken;
+        $user->update(['last_access' => now()]);
+
+        return response()->json([
+            'success' => true,
+            'message' => '¡Bienvenido!',
+            'data' => [
+                'user' => [
+                    'id' => $user->id,
+                    'username' => $user->username,
+                    'email' => $user->email,
+                    'status' => $user->status,
+                    'roles' => $user->roles,
+                ],
+                'customer' => $customer ? [
+                    'id' => $customer->id,
+                    'full_name' => $customer->full_name,
+                    'email' => $customer->email,
+                    'phone' => $customer->phone,
+                    'customer_status' => $customer->customer_status,
+                    'registration_date' => $customer->registration_date,
+                    'months_as_customer' => $customer->months_as_customer ?? 0,
+                ] : null,
+                'token' => $token,
+            ],
+        ]);
+    }
+
+    /**
+     * Logout API (para Vue.js)
+     */
+    public function logout(Request $request): JsonResponse
+    {
+        $request->user()->currentAccessToken()->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Sesión cerrada exitosamente',
+        ]);
+    }
+
+    /**
+     * Obtener usuario actual (API para Vue.js)
+     */
+    public function me(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $customer = Customer::where('user_id', $user->id)->first();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'user' => [
+                    'id' => $user->id,
+                    'username' => $user->username,
+                    'email' => $user->email,
+                    'status' => $user->status,
+                    'roles' => $user->roles,
+                ],
+                'customer' => $customer ? [
+                    'id' => $customer->id,
+                    'full_name' => $customer->full_name,
+                    'email' => $customer->email,
+                    'phone' => $customer->phone,
+                    'customer_status' => $customer->customer_status,
+                    'registration_date' => $customer->registration_date,
+                    'months_as_customer' => $customer->months_as_customer ?? 0,
+                ] : null,
+            ],
+        ]);
     }
 }

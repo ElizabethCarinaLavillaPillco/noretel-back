@@ -8,11 +8,12 @@ use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use OwenIt\Auditing\Contracts\Auditable;
 use OwenIt\Auditing\Auditable as AuditableTrait;
+use Spatie\Permission\Traits\HasRoles; // 👈 AGREGAR ESTO
 use Modules\Core\Services\PermissionService;
 
 class User extends Authenticatable implements Auditable
 {
-    use HasApiTokens, HasFactory, Notifiable, AuditableTrait;
+    use HasApiTokens, HasFactory, Notifiable, AuditableTrait, HasRoles; // 👈 AGREGAR HasRoles
 
     /**
      * The attributes that are mass assignable.
@@ -28,6 +29,7 @@ class User extends Authenticatable implements Auditable
         'requires_2fa',
         'last_access',
         'preferences',
+        'email_verified_at', // 👈 AGREGAR ESTO
     ];
 
     /**
@@ -61,11 +63,11 @@ class User extends Authenticatable implements Auditable
     }
 
     /**
-     * Get the roles for the user.
+     * Get the customer associated with the user.
      */
-    public function roles()
+    public function customer()
     {
-        return $this->belongsToMany(Role::class, 'role_user');
+        return $this->hasOne(\Modules\Customer\Entities\Customer::class);
     }
 
     /**
@@ -77,22 +79,31 @@ class User extends Authenticatable implements Auditable
     }
 
     /**
-     * Check if the user has a specific role.
-     *
-     * @param string|array $roles
-     * @return bool
+     * Check if user is admin
      */
-    public function hasRole($roles)
+    public function isAdmin(): bool
     {
-        if (is_string($roles)) {
-            return $this->roles->contains('name', $roles);
-        }
-
-        return $this->roles->pluck('name')->intersect($roles)->count() > 0;
+        return $this->hasAnyRole(['super-admin', 'admin']);
     }
 
     /**
-     * Check if the user has a specific permission.
+     * Check if user is customer
+     */
+    public function isCustomer(): bool
+    {
+        return $this->hasRole('customer');
+    }
+
+    /**
+     * Check if user is technician
+     */
+    public function isTechnician(): bool
+    {
+        return $this->hasRole('technician');
+    }
+
+    /**
+     * Check if the user has a specific permission (usando PermissionService personalizado).
      *
      * @param string $permission
      * @param string $module
@@ -101,8 +112,19 @@ class User extends Authenticatable implements Auditable
      */
     public function hasPermission($permission, $module, $context = [])
     {
-        $permissionService = app(PermissionService::class);
-        return $permissionService->hasPermission($this->id, $permission, $module, $context);
+        // Si es super-admin, siempre tiene permiso
+        if ($this->hasRole('super-admin')) {
+            return true;
+        }
+
+        // Usar el servicio de permisos personalizado si existe
+        if (class_exists(PermissionService::class)) {
+            $permissionService = app(PermissionService::class);
+            return $permissionService->hasPermission($this->id, $permission, $module, $context);
+        }
+
+        // Fallback a Spatie
+        return $this->hasPermissionTo("{$module}.{$permission}");
     }
 
     /**
@@ -114,8 +136,16 @@ class User extends Authenticatable implements Auditable
      */
     public function canViewModule($module, $context = [])
     {
-        $permissionService = app(PermissionService::class);
-        return $permissionService->canViewModule($this->id, $module, $context);
+        if ($this->hasRole('super-admin')) {
+            return true;
+        }
+
+        if (class_exists(PermissionService::class)) {
+            $permissionService = app(PermissionService::class);
+            return $permissionService->canViewModule($this->id, $module, $context);
+        }
+
+        return $this->can("{$module}.view");
     }
 
     /**
@@ -127,8 +157,16 @@ class User extends Authenticatable implements Auditable
      */
     public function canCreateInModule($module, $context = [])
     {
-        $permissionService = app(PermissionService::class);
-        return $permissionService->canCreateInModule($this->id, $module, $context);
+        if ($this->hasRole('super-admin')) {
+            return true;
+        }
+
+        if (class_exists(PermissionService::class)) {
+            $permissionService = app(PermissionService::class);
+            return $permissionService->canCreateInModule($this->id, $module, $context);
+        }
+
+        return $this->can("{$module}.create");
     }
 
     /**
@@ -140,8 +178,16 @@ class User extends Authenticatable implements Auditable
      */
     public function canEditInModule($module, $context = [])
     {
-        $permissionService = app(PermissionService::class);
-        return $permissionService->canEditInModule($this->id, $module, $context);
+        if ($this->hasRole('super-admin')) {
+            return true;
+        }
+
+        if (class_exists(PermissionService::class)) {
+            $permissionService = app(PermissionService::class);
+            return $permissionService->canEditInModule($this->id, $module, $context);
+        }
+
+        return $this->can("{$module}.edit");
     }
 
     /**
@@ -153,7 +199,31 @@ class User extends Authenticatable implements Auditable
      */
     public function canDeleteInModule($module, $context = [])
     {
-        $permissionService = app(PermissionService::class);
-        return $permissionService->canDeleteInModule($this->id, $module, $context);
+        if ($this->hasRole('super-admin')) {
+            return true;
+        }
+
+        if (class_exists(PermissionService::class)) {
+            $permissionService = app(PermissionService::class);
+            return $permissionService->canDeleteInModule($this->id, $module, $context);
+        }
+
+        return $this->can("{$module}.delete");
+    }
+
+    /**
+     * Get full name (if has customer)
+     */
+    public function getFullNameAttribute(): string
+    {
+        if ($this->customer) {
+            return $this->customer->full_name;
+        }
+
+        if ($this->employee) {
+            return "{$this->employee->first_name} {$this->employee->last_name}";
+        }
+
+        return $this->username;
     }
 }
