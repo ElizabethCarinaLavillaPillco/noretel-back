@@ -525,58 +525,112 @@
                         @endif
                     </ul>
                 </div>
+
+                <!-- Módulo Infraestructura de Red -->
+                <div class="sidebar-module-group">
+                    <div class="sidebar-module-title">
+                        <i class="fas fa-server"></i> Infraestructura
+                    </div>
+                    <ul class="nav flex-column">
+                        @if(auth()->user()->canViewModule('network'))
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('network.dashboard') ? 'active' : '' }}"
+                            href="{{ route('network.dashboard') }}">
+                            <i class="fas fa-chart-network"></i> Dashboard Red
+                            </a>
+                        </li>
+                        @endif
+
+                        @if(auth()->user()->canViewModule('routers'))
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('network.routers.*') ? 'active' : '' }}"
+                            href="{{ route('network.routers.index') }}">
+                            <i class="fas fa-router"></i> Routers
+                            </a>
+                        </li>
+                        @endif
+
+                        @if(auth()->user()->canViewModule('nodes'))
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('network.nodes.*') ? 'active' : '' }}"
+                            href="{{ route('network.nodes.index') }}">
+                            <i class="fas fa-network-wired"></i> Nodos
+                            </a>
+                        </li>
+                        @endif
+
+                        @if(auth()->user()->canViewModule('network_automation'))
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('network.automation.*') ? 'active' : '' }}"
+                            href="{{ route('network.automation.index') }}">
+                            <i class="fas fa-magic"></i> Automatizaciones
+                            </a>
+                        </li>
+                        @endif
+
+                        @if(auth()->user()->canViewModule('service_requests'))
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('network.service-requests.*') ? 'active' : '' }}"
+                            href="{{ route('network.service-requests.index') }}">
+                            <i class="fas fa-ticket-alt"></i> Solicitudes de Servicio
+                            </a>
+                        </li>
+                        @endif
+                    </ul>
+                </div>
+
                 <!-- Módulo Facturación y Cobranza -->
-<div class="sidebar-module-group">
-    <div class="sidebar-module-title">
-        <i class="fas fa-file-invoice-dollar"></i> Facturación
-    </div>
-    <ul class="nav flex-column">
-        @if(auth()->user()->canViewModule('invoices') || auth()->user()->canViewModule('payments'))
-        <li class="nav-item">
-            <a class="nav-link {{ request()->routeIs('billing.dashboard') ? 'active' : '' }}"
-               href="{{ route('billing.dashboard') }}">
-               <i class="fas fa-chart-line"></i> Dashboard Facturación
-            </a>
-        </li>
-        @endif
+                <div class="sidebar-module-group">
+                    <div class="sidebar-module-title">
+                        <i class="fas fa-file-invoice-dollar"></i> Facturación
+                    </div>
+                    <ul class="nav flex-column">
+                        @if(auth()->user()->canViewModule('invoices') || auth()->user()->canViewModule('payments'))
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('billing.dashboard') ? 'active' : '' }}"
+                            href="{{ route('billing.dashboard') }}">
+                            <i class="fas fa-chart-line"></i> Dashboard Facturación
+                            </a>
+                        </li>
+                        @endif
 
-        @if(auth()->user()->canViewModule('invoices'))
-        <li class="nav-item">
-            <a class="nav-link {{ request()->routeIs('billing.invoices.*') ? 'active' : '' }}"
-               href="{{ route('billing.invoices.index') }}">
-               <i class="fas fa-file-invoice"></i> Facturas
-            </a>
-        </li>
-        @endif
+                        @if(auth()->user()->canViewModule('invoices'))
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('billing.invoices.*') ? 'active' : '' }}"
+                            href="{{ route('billing.invoices.index') }}">
+                            <i class="fas fa-file-invoice"></i> Facturas
+                            </a>
+                        </li>
+                        @endif
 
-        @if(auth()->user()->canViewModule('payments'))
-        <li class="nav-item">
-            <a class="nav-link {{ request()->routeIs('billing.payments.*') ? 'active' : '' }}"
-               href="{{ route('billing.payments.index') }}">
-               <i class="fas fa-money-bill-wave"></i> Pagos
-            </a>
-        </li>
-        @endif
+                        @if(auth()->user()->canViewModule('payments'))
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('billing.payments.*') ? 'active' : '' }}"
+                            href="{{ route('billing.payments.index') }}">
+                            <i class="fas fa-money-bill-wave"></i> Pagos
+                            </a>
+                        </li>
+                        @endif
 
-        @if(auth()->user()->canViewModule('credit_notes'))
-        <li class="nav-item">
-            <a class="nav-link {{ request()->routeIs('billing.credit-notes.*') ? 'active' : '' }}"
-               href="{{ route('billing.credit-notes.index') }}">
-               <i class="fas fa-receipt"></i> Notas de Crédito
-            </a>
-        </li>
-        @endif
+                        @if(auth()->user()->canViewModule('credit_notes'))
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('billing.credit-notes.*') ? 'active' : '' }}"
+                            href="{{ route('billing.credit-notes.index') }}">
+                            <i class="fas fa-receipt"></i> Notas de Crédito
+                            </a>
+                        </li>
+                        @endif
 
-        @if(auth()->user()->canViewModule('financial_reports'))
-        <li class="nav-item">
-            <a class="nav-link {{ request()->routeIs('billing.reports') ? 'active' : '' }}"
-               href="{{ route('billing.reports') }}">
-               <i class="fas fa-chart-bar"></i> Reportes Financieros
-            </a>
-        </li>
-        @endif
-    </ul>
-</div>
+                        @if(auth()->user()->canViewModule('financial_reports'))
+                        <li class="nav-item">
+                            <a class="nav-link {{ request()->routeIs('billing.reports') ? 'active' : '' }}"
+                            href="{{ route('billing.reports') }}">
+                            <i class="fas fa-chart-bar"></i> Reportes Financieros
+                            </a>
+                        </li>
+                        @endif
+                    </ul>
+                </div>
                 <!-- Módulo Sistema -->
                 <div class="sidebar-module-group">
                     <div class="sidebar-module-title">

@@ -3,5 +3,6 @@
     "Customer": true,
     "Services": true,
     "Contract": true,
-    "Billing": true
+    "Billing": true,
+    "Network": true
 }
