@@ -1,183 +1,16 @@
 <?php
 
-namespace Modules\Network\Http\Controllers\Api;
+namespace Modules\Network\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Modules\Network\Entities\ServiceRequest;
-use Modules\Network\Jobs\ProcessRouterReboot;
-use Modules\Customer\Entities\Customer;
+use Modules\Core\Entities\User;
 
-class ServiceRequestsController extends Controller
+class ServiceRequestController extends Controller
 {
     /**
-     * Crear nueva solicitud de servicio desde el frontend
-     */
-    public function create(Request $request)
-    {
-        $request->validate([
-            'type' => 'required|in:router_reboot,connection_issue,slow_speed,no_internet,other',
-            'description' => 'required|string|max:1000',
-        ]);
-
-        try {
-            // Obtener cliente autenticado
-            $user = $request->user();
-            $customer = Customer::where('user_id', $user->id)->firstOrFail();
-
-            // Obtener contrato activo
-            $contract = $customer->contracts()
-                ->where('status', 'active')
-                ->latest()
-                ->first();
-
-            if (!$contract) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'No tienes un contrato activo'
-                ], 400);
-            }
-
-            // Obtener router asociado al contrato
-            $router = $contract->installation?->router ?? null;
-
-            // Crear solicitud de servicio
-            $serviceRequest = ServiceRequest::create([
-                'customer_id' => $customer->id,
-                'router_id' => $router?->id,
-                'contract_id' => $contract->id,
-                'type' => $request->type,
-                'description' => $request->description,
-                'customer_notes' => $request->notes,
-                'priority' => $this->determinePriority($request->type),
-                'status' => 'pending',
-                'is_automated' => $this->canBeAutomated($request->type),
-            ]);
-
-            // Si es automatizable, disparar job
-            if ($serviceRequest->canBeAutomated() && $router) {
-                ProcessRouterReboot::dispatch($serviceRequest)->delay(now()->addSeconds(5));
-
-                $message = 'Tu solicitud está siendo procesada automáticamente. Recibirás una notificación en 2-3 minutos.';
-            } else {
-                $message = 'Tu solicitud ha sido registrada. Un técnico se pondrá en contacto contigo pronto.';
-            }
-
-            return response()->json([
-                'success' => true,
-                'message' => $message,
-                'data' => [
-                    'request_id' => $serviceRequest->id,
-                    'ticket_number' => $serviceRequest->ticket_number,
-                    'status' => $serviceRequest->status,
-                    'is_automated' => $serviceRequest->is_automated,
-                    'estimated_time' => $serviceRequest->is_automated ? '2-3 minutos' : '30-60 minutos',
-                ]
-            ], 201);
-
-        } catch (\Exception $e) {
-            \Log::error('Error al crear solicitud de servicio', [
-                'error' => $e->getMessage(),
-                'user_id' => $request->user()->id
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'error' => 'Error al procesar tu solicitud. Intenta nuevamente.'
-            ], 500);
-        }
-    }
-
-    /**
-     * Obtener mis solicitudes
-     */
-    public function myRequests(Request $request)
-    {
-        try {
-            $user = $request->user();
-            $customer = Customer::where('user_id', $user->id)->firstOrFail();
-
-            $serviceRequests = ServiceRequest::where('customer_id', $customer->id)
-                ->with(['router', 'assignedTechnician'])
-                ->latest()
-                ->paginate(10);
-
-            return response()->json([
-                'success' => true,
-                'data' => $serviceRequests
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Error al obtener solicitudes'
-            ], 500);
-        }
-    }
-
-    /**
-     * Ver detalles de una solicitud por número de ticket
-     */
-    public function show(Request $request, $ticketNumber)
-    {
-        try {
-            $user = $request->user();
-            $customer = Customer::where('user_id', $user->id)->firstOrFail();
-
-            $serviceRequest = ServiceRequest::where('ticket_number', $ticketNumber)
-                ->where('customer_id', $customer->id)
-                ->with(['router', 'assignedTechnician', 'routerLogs'])
-                ->firstOrFail();
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'ticket_number' => $serviceRequest->ticket_number,
-                    'type' => $serviceRequest->type_label,
-                    'status' => $serviceRequest->status_label,
-                    'priority' => $serviceRequest->priority_label,
-                    'description' => $serviceRequest->description,
-                    'resolution_notes' => $serviceRequest->resolution_notes,
-                    'created_at' => $serviceRequest->created_at->format('d/m/Y H:i'),
-                    'completed_at' => $serviceRequest->completed_at?->format('d/m/Y H:i'),
-                    'resolution_time' => $serviceRequest->resolution_time ? "{$serviceRequest->resolution_time} minutos" : null,
-                    'technician' => $serviceRequest->assignedTechnician ? [
-                        'name' => $serviceRequest->assignedTechnician->name,
-                        'phone' => $serviceRequest->assignedTechnician->phone,
-                    ] : null,
-                    'router' => $serviceRequest->router ? [
-                        'name' => $serviceRequest->router->name,
-                        'status' => $serviceRequest->router->status_label,
-                    ] : null,
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Solicitud no encontrada'
-            ], 404);
-        }
-    }
-
-    /**
-     * Obtener solicitudes pendientes (para admin)
-     */
-    public function pending(Request $request)
-    {
-        $serviceRequests = ServiceRequest::pending()
-            ->with(['customer', 'router'])
-            ->latest()
-            ->paginate(20);
-
-        return response()->json([
-            'success' => true,
-            'data' => $serviceRequests
-        ]);
-    }
-
-    /**
-     * Listar todas las solicitudes (para admin)
+     * Mostrar lista de solicitudes de servicio
      */
     public function index(Request $request)
     {
@@ -206,10 +39,33 @@ class ServiceRequestsController extends Controller
 
         $serviceRequests = $query->latest()->paginate(20);
 
-        return response()->json([
-            'success' => true,
-            'data' => $serviceRequests
+        // Obtener datos para filtros
+        $statuses = ['pending', 'in_progress', 'completed', 'failed', 'cancelled'];
+        $types = ['router_reboot', 'connection_issue', 'slow_speed', 'no_internet', 'other'];
+        $priorities = ['low', 'medium', 'high', 'critical'];
+
+        return view('network::service-requests.index', compact(
+            'serviceRequests',
+            'statuses',
+            'types',
+            'priorities'
+        ));
+    }
+
+    /**
+     * Mostrar detalles de una solicitud
+     */
+    public function show(ServiceRequest $serviceRequest)
+    {
+        $serviceRequest->load([
+            'customer.user',
+            'router',
+            'contract',
+            'assignedTechnician',
+            'routerLogs'
         ]);
+
+        return view('network::service-requests.show', compact('serviceRequest'));
     }
 
     /**
@@ -222,41 +78,102 @@ class ServiceRequestsController extends Controller
         ]);
 
         try {
-            $technician = \Modules\Core\Entities\User::findOrFail($request->technician_id);
+            $technician = User::findOrFail($request->technician_id);
             $serviceRequest->assignTo($technician);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Técnico asignado exitosamente'
-            ]);
+            return redirect()
+                ->back()
+                ->with('success', 'Técnico asignado exitosamente');
 
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Error al asignar técnico'
-            ], 500);
+            return redirect()
+                ->back()
+                ->with('error', 'Error al asignar técnico: ' . $e->getMessage());
         }
     }
 
     /**
-     * Determinar prioridad según tipo de solicitud
+     * Marcar solicitud como completada
      */
-    protected function determinePriority($type)
+    public function complete(Request $request, ServiceRequest $serviceRequest)
     {
-        return match($type) {
-            'no_internet' => 'high',
-            'connection_issue' => 'high',
-            'slow_speed' => 'medium',
-            'router_reboot' => 'medium',
-            default => 'low'
-        };
+        $request->validate([
+            'resolution_notes' => 'required|string|max:1000',
+        ]);
+
+        try {
+            $serviceRequest->markAsCompleted($request->resolution_notes);
+
+            return redirect()
+                ->back()
+                ->with('success', 'Solicitud marcada como completada');
+
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->with('error', 'Error al completar solicitud: ' . $e->getMessage());
+        }
     }
 
     /**
-     * Verificar si puede ser automatizado
+     * Cancelar solicitud
      */
-    protected function canBeAutomated($type)
+    public function cancel(Request $request, ServiceRequest $serviceRequest)
     {
-        return in_array($type, ['router_reboot']);
+        $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $serviceRequest->update([
+                'status' => 'cancelled',
+                'technical_notes' => $request->reason,
+            ]);
+
+            return redirect()
+                ->back()
+                ->with('success', 'Solicitud cancelada');
+
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->with('error', 'Error al cancelar solicitud: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Reintentar solicitud fallida
+     */
+    public function retry(ServiceRequest $serviceRequest)
+    {
+        try {
+            if ($serviceRequest->status !== 'failed') {
+                return redirect()
+                    ->back()
+                    ->with('error', 'Solo se pueden reintentar solicitudes fallidas');
+            }
+
+            // Resetear estado
+            $serviceRequest->update([
+                'status' => 'pending',
+                'started_at' => null,
+                'completed_at' => null,
+            ]);
+
+            // Si es automatizable, disparar job nuevamente
+            if ($serviceRequest->canBeAutomated() && $serviceRequest->router) {
+                \Modules\Network\Jobs\ProcessRouterReboot::dispatch($serviceRequest)
+                    ->delay(now()->addSeconds(5));
+            }
+
+            return redirect()
+                ->back()
+                ->with('success', 'Solicitud reenviada a procesamiento');
+
+        } catch (\Exception $e) {
+            return redirect()
+                ->back()
+                ->with('error', 'Error al reintentar solicitud: ' . $e->getMessage());
+        }
     }
 }
