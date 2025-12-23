@@ -17,17 +17,21 @@ class Plan extends Model
         'download_speed',
         'features',
         'commitment_period',
-        'active'
+        'active',
+        'is_featured',
+        'featured_order'
     ];
-
+    
     protected $casts = [
         'price' => 'float',
         'upload_speed' => 'integer',
         'download_speed' => 'integer',
         'features' => 'array',
         'commitment_period' => 'integer',
-        'active' => 'boolean'
+        'active' => 'boolean',
+        'is_featured' => 'boolean'
     ];
+    
 
     /**
      * El servicio al que pertenece este plan.

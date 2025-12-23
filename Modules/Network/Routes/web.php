@@ -6,6 +6,7 @@ use Modules\Network\Http\Controllers\RouterController;
 use Modules\Network\Http\Controllers\NodeController;
 use Modules\Network\Http\Controllers\ServiceRequestController;
 use Modules\Network\Http\Controllers\AutomationRuleController;
+use Modules\Network\Http\Controllers\SSHController;
 
 /*
 |--------------------------------------------------------------------------
@@ -51,4 +52,10 @@ Route::middleware('auth')->prefix('network')->name('network.')->group(function (
     Route::get('reports/network-health', [NetworkDashboardController::class, 'networkHealth'])->name('reports.network-health');
     Route::get('reports/router-performance', [NetworkDashboardController::class, 'routerPerformance'])->name('reports.router-performance');
     Route::get('reports/service-requests-summary', [NetworkDashboardController::class, 'serviceRequestsSummary'])->name('reports.service-requests-summary');
+
+    // Terminal SSH
+    Route::get('/routers/{router}/ssh', [SSHController::class, 'show'])
+        ->name('ssh.show');
+    Route::post('/routers/{router}/ssh/execute', [SSHController::class, 'execute'])
+        ->name('ssh.execute');
 });

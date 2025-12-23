@@ -28,10 +28,25 @@ Route::prefix('public')->name('public.')->group(function () {
         Route::get('/{id}', [CoverageRequestController::class, 'show'])->name('show');
     });
 
-    // ==================== PLANES PÚBLICOS ====================
-    Route::prefix('plans')->name('plans.')->group(function () use ($planController) {
-        Route::get('/', [$planController, 'index'])->name('index');
-        Route::get('/by-service', [$planController, 'getByServiceType'])->name('by-service');
-        Route::get('/{id}', [$planController, 'show'])->name('show');
+    Route::prefix('public')->name('public.')->group(function () {
+
+        Route::prefix('plans')->name('plans.')->group(function () {
+    
+            Route::get('/', [PlanController::class, 'index'])->name('index');
+    
+            // 🔥 PLANES DESTACADOS (ANTES DEL {id})
+            Route::get('/featured', [PlanController::class, 'getFeatured'])
+                ->name('featured');
+    
+            Route::get('/by-service', [PlanController::class, 'getByServiceType'])
+                ->name('by-service');
+    
+            // ⚠️ SIEMPRE AL FINAL
+            Route::get('/{id}', [PlanController::class, 'show'])
+                ->whereNumber('id')
+                ->name('show');
+        });
+    
     });
+    
 });

@@ -164,7 +164,42 @@
                                     Plan activo
                                 </label>
                             </div>
+                            <div class="mb-3">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" id="active" name="active" value="1"
+                                        {{ old('active', $plan->active) ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="active">
+                                        Plan activo
+                                    </label>
+                                </div>
+
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="is_featured" name="is_featured" value="1"
+                                        {{ old('is_featured', $plan->is_featured) ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="is_featured">
+                                        <span class="badge bg-warning text-dark">⭐ Destacar en página principal</span>
+                                    </label>
+                                    <small class="d-block text-muted mt-1">
+                                        Los planes destacados aparecerán en la sección de ofertas
+                                    </small>
+                                </div>
+                            </div>
+
                         </div>
+                        <div class="mb-3" id="featured-order-field" style="display: none;">
+                            <label for="featured_order" class="form-label">
+                                Orden de aparición (destacados)
+                            </label>
+                            <input type="number" class="form-control" id="featured_order" name="featured_order"
+                                value="{{ old('featured_order', $plan->featured_order) }}"
+                                min="0" max="100">
+                            <small class="text-muted">
+                                Menor número = aparece primero
+                            </small>
+                        </div>
+
+
+                        
 
                         <div class="d-grid gap-2 d-md-flex justify-content-md-end">
                             <a href="{{ route('services.plans.show', $plan->id) }}" class="btn btn-secondary me-md-2">Cancelar</a>
@@ -205,6 +240,17 @@
                 this.closest('.feature-item').remove();
             });
         });
+        const featuredCheckbox = document.getElementById('is_featured');
+        const featuredOrderField = document.getElementById('featured-order-field');
+
+        if (!featuredCheckbox) return;
+
+        function toggleFeaturedOrder() {
+            featuredOrderField.style.display = featuredCheckbox.checked ? 'block' : 'none';
+        }
+
+        featuredCheckbox.addEventListener('change', toggleFeaturedOrder);
+        toggleFeaturedOrder(); // importante al cargar
     });
 </script>
 @endpush

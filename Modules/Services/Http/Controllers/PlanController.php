@@ -675,4 +675,18 @@ class PlanController extends Controller
 
         return $benefits;
     }
+
+    public function apiFeatured()
+    {
+        $plans = Plan::where('active', true)
+            ->where('is_featured', true)
+            ->orderBy('featured_order')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $plans
+        ]);
+    }
+
 }

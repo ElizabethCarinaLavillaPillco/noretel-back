@@ -15,6 +15,9 @@
             <a href="{{ route('network.routers.edit', $router) }}" class="btn btn-primary">
                 <i class="fas fa-edit"></i> Editar
             </a>
+            <a href="{{ route('network.ssh.show', $router) }}" class="btn btn-dark">
+                <i class="fas fa-terminal"></i> Terminal SSH
+            </a>
             <form action="{{ route('network.routers.reboot', $router) }}"
                   method="POST"
                   class="d-inline"

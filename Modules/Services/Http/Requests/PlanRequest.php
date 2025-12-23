@@ -32,8 +32,11 @@ class PlanRequest extends FormRequest
             'features' => 'nullable|array',
             'commitment_period' => 'nullable|integer|min:0',
             'active' => 'boolean',
+            'is_featured' => 'nullable|boolean',
+            'featured_order' => 'nullable|integer|min:0',
+
             'promotion_ids' => 'nullable|array',
-            'promotion_ids.*' => 'exists:promotions,id'
+            'promotion_ids.*' => 'exists:promotions,id',
         ];
     }
 
@@ -78,7 +81,12 @@ class PlanRequest extends FormRequest
             ]);
         }
 
-        // Si hay características (features) como string JSON, convertirlas a array
+        if ($this->has('is_featured')) {
+            $this->merge([
+                'is_featured' => filter_var($this->is_featured, FILTER_VALIDATE_BOOLEAN)
+            ]);
+        }
+    
         if ($this->has('features') && is_string($this->features)) {
             $features = json_decode($this->features, true);
             if (json_last_error() === JSON_ERROR_NONE) {

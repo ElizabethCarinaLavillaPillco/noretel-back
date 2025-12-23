@@ -12,6 +12,7 @@
         "laravel/tinker": "^2.8",
         "nwidart/laravel-modules": "10.0",
         "owen-it/laravel-auditing": "^13.7",
+        "phpseclib/phpseclib": "~3.0",
         "spatie/laravel-permission": "^6.16"
     },
     "require-dev": {

@@ -23,6 +23,7 @@ return new class extends Migration
             $table->json('features')->nullable();
             $table->integer('commitment_period')->default(0); // En meses
             $table->boolean('active')->default(true);
+            $table->boolean('is_featured')->default(false);
             $table->timestamps();
         });
     }

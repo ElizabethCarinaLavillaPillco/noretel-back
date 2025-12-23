@@ -10,6 +10,10 @@ use Modules\Customer\Http\Requests\StoreCustomerRequest;
 use Modules\Customer\Http\Requests\UpdateCustomerRequest;
 use Modules\Customer\Entities\Customer;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+use Modules\Network\Services\RouterService;
+use Modules\Network\Entities\Router;
+use Modules\Billing\Entities\Payment;
 
 class CustomerController extends Controller
 {
@@ -229,5 +233,165 @@ class CustomerController extends Controller
         
         return redirect()->back()
             ->with('success', $result['message']);
+    }
+
+    // ========================================================================
+    // MÉTODOS API PARA CLIENTES (Frontend Vue)
+    // ========================================================================
+
+    /**
+     * API: Dashboard del cliente
+     */
+    public function apiDashboard(Request $request)
+    {
+        $user = $request->user();
+        
+        if (!$user) {
+            return response()->json(['error' => 'No autenticado'], 401);
+        }
+
+        $customer = Customer::where('user_id', $user->id)->first();
+        
+        if (!$customer) {
+            return response()->json(['error' => 'Cliente no encontrado'], 404);
+        }
+
+        // Obtener contrato activo
+        $contract = $customer->contracts()
+            ->where('status', 'active')
+            ->with('plan')
+            ->first();
+
+        if (!$contract) {
+            return response()->json([
+                'customer' => [
+                    'name' => $user->name,
+                    'email' => $user->email,
+                ],
+                'service' => null,
+                'message' => 'No tiene servicio activo'
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'customer' => [
+                'name' => $user->name,
+                'email' => $user->email,
+            ],
+            'service' => [
+                'plan_name' => $contract->plan->name,
+                'download_speed' => $contract->plan->download_speed,
+                'upload_speed' => $contract->plan->upload_speed,
+                'price' => $contract->plan->price,
+                'status' => $contract->status,
+                'next_payment' => $contract->next_billing_date,
+            ]
+        ]);
+    }
+
+    /**
+     * API: Reiniciar línea del cliente
+     */
+    public function apiRestartLine(Request $request)
+    {
+        $user = $request->user();
+        
+        if (!$user) {
+            return response()->json(['error' => 'No autenticado'], 401);
+        }
+
+        $customer = Customer::where('user_id', $user->id)->first();
+        
+        if (!$customer) {
+            return response()->json(['error' => 'Cliente no encontrado'], 404);
+        }
+
+        // Buscar router asignado al cliente
+        $routerCustomer = \DB::table('router_customer')
+            ->where('customer_id', $customer->id)
+            ->where('connection_status', 'active')
+            ->first();
+        
+        if (!$routerCustomer) {
+            return response()->json(['error' => 'No tiene router asignado'], 404);
+        }
+
+        $router = Router::find($routerCustomer->router_id);
+        $username = $routerCustomer->pppoe_username;
+
+        try {
+            $routerService = app(RouterService::class);
+            
+            // Desconectar y reconectar
+            $routerService->suspendClient($router, $username);
+            sleep(2);
+            $routerService->activateClient($router, $username);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Línea reiniciada correctamente. Espere 1-2 minutos.'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al reiniciar línea: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * API: Subir comprobante de pago
+     */
+    public function apiUploadPayment(Request $request)
+    {
+        $request->validate([
+            'receipt' => 'required|image|max:5120', // 5MB max
+            'amount' => 'required|numeric|min:0',
+            'method' => 'required|in:yape,plin,transferencia,efectivo'
+        ]);
+
+        $user = $request->user();
+        
+        if (!$user) {
+            return response()->json(['error' => 'No autenticado'], 401);
+        }
+
+        $customer = Customer::where('user_id', $user->id)->first();
+        
+        if (!$customer) {
+            return response()->json(['error' => 'Cliente no encontrado'], 404);
+        }
+
+        try {
+            // Guardar imagen
+            $path = $request->file('receipt')->store('payment-receipts', 'public');
+
+            // Crear registro de pago pendiente
+            Payment::create([
+                'customer_id' => $customer->id,
+                'amount' => $request->amount,
+                'payment_method' => $request->method,
+                'status' => 'pending', // Admin debe aprobar
+                'receipt_path' => $path,
+                'payment_date' => now(),
+                'notes' => 'Comprobante subido por el cliente',
+            ]);
+
+            // TODO: Notificar a admin por email/SMS
+            // event(new PaymentReceiptUploaded($customer, $payment));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Comprobante recibido. Verificaremos tu pago pronto.'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al subir comprobante: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

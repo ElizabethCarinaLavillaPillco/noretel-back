@@ -2,13 +2,8 @@
 
 /*
 |--------------------------------------------------------------------------
-| Web Routes
+| Web Routes - Customer Module
 |--------------------------------------------------------------------------
-|
-| Here is where you can register web routes for your application. These
-| routes are loaded by the RouteServiceProvider within a group which
-| contains the "web" middleware group. Now create something great!
-|
 */
 
 use Illuminate\Support\Facades\Route;
@@ -36,8 +31,6 @@ Route::prefix('customer')->middleware(['auth'])->name('customer.')->group(functi
             Route::get('/{id}', [CustomerController::class, 'show'])->name('show')->where('id', '[0-9]+');
         });
         
-        
-        
         // Rutas de edición
         Route::middleware('permission:customers,edit')->group(function() {
             Route::get('/{id}/edit', [CustomerController::class, 'edit'])->name('edit');
@@ -54,8 +47,8 @@ Route::prefix('customer')->middleware(['auth'])->name('customer.')->group(functi
     
     // Documents - Con permisos granulares
     Route::prefix('documents')->name('documents.')->group(function() {
-           // Rutas de creación
-           Route::middleware('permission:customers,create')->group(function() {
+        // Rutas de creación
+        Route::middleware('permission:customers,create')->group(function() {
             Route::get('/create', [DocumentController::class, 'create'])->name('create');
             Route::post('/', [DocumentController::class, 'store'])->name('store');
             Route::post('/{id}/versions', [DocumentController::class, 'uploadVersion'])->name('upload-version');
@@ -67,8 +60,6 @@ Route::prefix('customer')->middleware(['auth'])->name('customer.')->group(functi
             Route::get('/{id}/download', [DocumentController::class, 'download'])->name('download');
             Route::get('/{id}/version/{versionId}/download', [DocumentController::class, 'downloadVersion'])->name('download-version');
         });
-        
-     
         
         // Rutas de edición
         Route::middleware('permission:customers,edit')->group(function() {
@@ -96,8 +87,6 @@ Route::prefix('customer')->middleware(['auth'])->name('customer.')->group(functi
             Route::get('/{id}', [InteractionController::class, 'show'])->name('show');
         });
         
-        
-        
         // Rutas de edición
         Route::middleware('permission:customers,edit')->group(function() {
             Route::get('/{id}/edit', [InteractionController::class, 'edit'])->name('edit');
@@ -114,8 +103,8 @@ Route::prefix('customer')->middleware(['auth'])->name('customer.')->group(functi
     
     // Leads - Con permisos granulares
     Route::prefix('leads')->name('leads.')->group(function() {
-         // Rutas de creación
-         Route::middleware('permission:customers,create')->group(function() {
+        // Rutas de creación
+        Route::middleware('permission:customers,create')->group(function() {
             Route::get('/create', [LeadController::class, 'create'])->name('create');
             Route::post('/', [LeadController::class, 'store'])->name('store');
         });
@@ -124,8 +113,6 @@ Route::prefix('customer')->middleware(['auth'])->name('customer.')->group(functi
             Route::get('/', [LeadController::class, 'index'])->name('index');
             Route::get('/{id}', [LeadController::class, 'show'])->name('show');
         });
-        
-       
         
         // Rutas de edición
         Route::middleware('permission:customers,edit')->group(function() {
@@ -141,7 +128,8 @@ Route::prefix('customer')->middleware(['auth'])->name('customer.')->group(functi
             Route::delete('/{id}', [LeadController::class, 'destroy'])->name('destroy');
         });
     });
-    // Address Routes - Add these to your existing routes file
+    
+    // Address Routes
     Route::prefix('addresses')->name('addresses.')->group(function() {
         // Routes de creación
         Route::middleware('permission:customers,create')->group(function() {
@@ -158,7 +146,8 @@ Route::prefix('customer')->middleware(['auth'])->name('customer.')->group(functi
             Route::delete('/{id}', [AddressController::class, 'destroy'])->name('destroy');
         });
     });
-    // Routes para contactos de emergencia - Añadir al archivo web.php
+    
+    // Routes para contactos de emergencia
     Route::prefix('emergencyContacts')->name('emergencyContacts.')->group(function() {
         // Rutas de creación
         Route::middleware('permission:customers,create')->group(function() {
@@ -175,4 +164,18 @@ Route::prefix('customer')->middleware(['auth'])->name('customer.')->group(functi
             Route::delete('/{id}', [EmergencyContactController::class, 'destroy'])->name('destroy');
         });
     });
+});
+
+// Rutas API para clientes autenticados (usando Sanctum o session)
+Route::prefix('api/customer')->middleware(['auth:sanctum'])->name('api.customer.')->group(function() {
+    
+    // Dashboard del cliente
+    Route::get('/dashboard', [CustomerController::class, 'apiDashboard'])->name('dashboard');
+    
+    // Reiniciar línea
+    Route::post('/restart-line', [CustomerController::class, 'apiRestartLine'])->name('restart-line');
+    
+    // Subir comprobante de pago
+    Route::post('/upload-payment', [CustomerController::class, 'apiUploadPayment'])->name('upload-payment');
+    
 });

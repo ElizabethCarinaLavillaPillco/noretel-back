@@ -24,21 +24,16 @@ use Modules\Services\Http\Controllers\PromotionController;
 Route::prefix('public')->name('public.')->group(function () {
 
     // ==================== PLANES PÚBLICOS ====================
-    Route::prefix('plans')->name('plans.')->group(function () {
-        Route::get('/', function () {
-            $planController = app(PlanController::class);
-            return $planController->apiIndex();
-        })->name('index');
+    Route::prefix('plans')->group(function () {
 
-        Route::get('/{id}', function ($id) {
-            $planController = app(PlanController::class);
-            return $planController->apiShow($id);
-        })->name('show');
+        Route::get('/', [PlanController::class, 'apiIndex']);
 
-        Route::get('/by-service/{serviceId}', function ($serviceId) {
-            $planController = app(PlanController::class);
-            return $planController->apiByService($serviceId);
-        })->name('by-service');
+        Route::get('/featured', [PlanController::class, 'apiFeatured']);
+
+        Route::get('/by-service/{serviceId}', [PlanController::class, 'apiByService']);
+
+        Route::get('/{id}', [PlanController::class, 'apiShow'])
+            ->whereNumber('id');
     });
 
     // ==================== SERVICIOS PÚBLICOS ====================

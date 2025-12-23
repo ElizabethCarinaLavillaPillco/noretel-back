@@ -152,12 +152,28 @@
                         </div>
 
                         <div class="mb-3">
-                            <div class="form-check">
+                            <div class="form-check mb-2">
                                 <input class="form-check-input" type="checkbox" id="active" name="active" value="1" {{ old('active', '1') == '1' ? 'checked' : '' }}>
                                 <label class="form-check-label" for="active">
                                     Plan activo
                                 </label>
                             </div>
+                            
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="is_featured" name="is_featured" value="1" {{ old('is_featured') == '1' ? 'checked' : '' }}>
+                                <label class="form-check-label" for="is_featured">
+                                    <span class="badge bg-warning text-dark">⭐ Destacar en página principal</span>
+                                </label>
+                                <small class="d-block text-muted mt-1">
+                                    Los planes destacados aparecerán en la sección de ofertas de la página principal
+                                </small>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3" id="featured-order-field" style="display: none;">
+                            <label for="featured_order" class="form-label">Orden de aparición (destacados)</label>
+                            <input type="number" class="form-control" id="featured_order" name="featured_order" value="{{ old('featured_order', 0) }}" min="0" max="100">
+                            <small class="text-muted">Menor número = aparece primero (0-100)</small>
                         </div>
 
                         <div class="d-grid gap-2 d-md-flex justify-content-md-end">
@@ -199,6 +215,21 @@
                 this.closest('.feature-item').remove();
             });
         });
+        
+        // Mostrar/ocultar campo de orden cuando se marca como destacado
+        const featuredCheckbox = document.getElementById('is_featured');
+        const featuredOrderField = document.getElementById('featured-order-field');
+        
+        function toggleFeaturedOrder() {
+            if (featuredCheckbox.checked) {
+                featuredOrderField.style.display = 'block';
+            } else {
+                featuredOrderField.style.display = 'none';
+            }
+        }
+        
+        featuredCheckbox.addEventListener('change', toggleFeaturedOrder);
+        toggleFeaturedOrder(); // Ejecutar al cargar
     });
 </script>
 @endpush

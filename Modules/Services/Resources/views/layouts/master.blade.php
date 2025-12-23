@@ -6,7 +6,16 @@
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
         <h1 class="h3 mb-0 text-gray-800">@yield('page-title', 'Módulo de Servicios')</h1>
         <div>
-            @yield('actions')
+        @section('actions')
+            <a href="{{ route('services.services.index') }}" class="btn btn-secondary btn-sm">
+                <i class="fas fa-arrow-left"></i> Volver
+            </a>
+
+            <a href="{{ route('services.plans.create', request()->only('service_id')) }}"
+            class="btn btn-primary btn-sm">
+                <i class="fas fa-plus"></i> Crear plan
+            </a>
+        @endsection
         </div>
     </div>
 @endsection

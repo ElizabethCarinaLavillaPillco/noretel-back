@@ -359,4 +359,43 @@ class PlanController extends Controller
 
         return $benefits;
     }
+
+    /**
+     * Obtener planes destacados para la página principal
+     *
+     * @return JsonResponse
+     */
+    public function getFeatured(): JsonResponse
+    {
+        try {
+            // Obtener solo planes activos Y destacados
+            $plans = $this->planRepository->query()
+                ->where('active', true)
+                ->where('is_featured', true)
+                ->with(['service', 'promotions' => function ($query) {
+                    $query->currentlyActive();
+                }])
+                ->orderBy('featured_order', 'asc')
+                ->orderBy('price', 'asc')
+                ->limit(6) // Máximo 6 planes destacados
+                ->get();
+
+            // Formatear para el frontend Vue.js
+            $formattedPlans = $plans->map(function ($plan) {
+                return $this->formatPlanForFrontend($plan);
+            });
+
+            return response()->json([
+                'success' => true,
+                'data' => $formattedPlans,
+                'total' => $formattedPlans->count(),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al obtener planes destacados',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
 }
